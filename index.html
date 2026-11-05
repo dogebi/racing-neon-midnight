@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Neon Midnight</title>
+<style>
+  :root{
+    --pink:#ff2d95; --cyan:#00e5ff; --purple:#7b2dff; --gold:#ffd166;
+    --bg:#07030f;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);
+    font-family:'Segoe UI','Malgun Gothic',system-ui,sans-serif;color:#fff}
+  #game{position:fixed;inset:0;display:block}
+  canvas{display:block}
+
+  /* ---- speed vignette / damage flash ---- */
+  #vignette{position:fixed;inset:0;pointer-events:none;opacity:.6;
+    background:radial-gradient(ellipse at center, transparent 46%, rgba(5,0,15,.85) 100%)}
+  #speedglow{position:fixed;inset:0;pointer-events:none;opacity:0;
+    background:radial-gradient(ellipse at center, transparent 42%, rgba(123,45,255,.55) 100%)}
+  #flash{position:fixed;inset:0;pointer-events:none;opacity:0;background:#ff2d95;mix-blend-mode:screen}
+  #scan{position:fixed;inset:0;pointer-events:none;opacity:.10;
+    background:repeating-linear-gradient(0deg, rgba(255,255,255,.06) 0 1px, transparent 1px 3px)}
+
+  /* ---- HUD ---- */
+  #hud{position:fixed;inset:0;pointer-events:none;opacity:0;transition:opacity .5s}
+  #hud.on{opacity:1}
+  #speedbox{position:absolute;right:3.5vw;bottom:5vh;text-align:right;text-shadow:0 0 12px var(--cyan)}
+  #speed{font-size:64px;font-weight:800;font-style:italic;letter-spacing:2px;
+    color:#fff;line-height:1;font-variant-numeric:tabular-nums}
+  #speedunit{font-size:15px;color:var(--cyan);letter-spacing:6px;margin-top:4px}
+  #boostbar{width:220px;height:10px;margin:12px 0 0 auto;border:1px solid var(--pink);
+    border-radius:6px;overflow:hidden;background:rgba(255,45,149,.12)}
+  #boostfill{height:100%;width:0%;background:linear-gradient(90deg,var(--purple),var(--pink));
+    box-shadow:0 0 10px var(--pink);transition:width .1s linear}
+  #boostlabel{font-size:11px;color:var(--pink);letter-spacing:4px;margin-top:5px}
+
+  #lapbox{position:absolute;left:3.5vw;top:4vh;font-variant-numeric:tabular-nums}
+  #laptime{font-size:42px;font-weight:700;font-style:italic;color:#fff;text-shadow:0 0 12px var(--pink)}
+  #lapsub{font-size:14px;color:var(--cyan);margin-top:6px;letter-spacing:2px;text-shadow:0 0 8px var(--cyan)}
+  #lapsub b{color:var(--gold)}
+
+  #scorebox{position:absolute;left:3.5vw;bottom:5vh;text-shadow:0 0 10px var(--purple)}
+  #score{font-size:30px;font-weight:800;color:var(--purple);letter-spacing:1px}
+  #scorelabel{font-size:11px;color:#b9a6ff;letter-spacing:4px;margin-top:2px}
+
+  #driftpop{position:absolute;left:50%;top:26%;transform:translateX(-50%);
+    font-size:30px;font-weight:900;font-style:italic;color:var(--cyan);
+    text-shadow:0 0 18px var(--cyan);opacity:0;letter-spacing:3px}
+  #toast{position:absolute;left:50%;top:38%;transform:translateX(-50%);
+    font-size:22px;font-weight:700;color:var(--gold);text-shadow:0 0 14px var(--gold);
+    opacity:0;letter-spacing:2px;white-space:nowrap}
+
+  /* ---- start overlay ---- */
+  #overlay{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;background:rgba(4,1,12,.88);z-index:10;transition:opacity .6s}
+  #overlay.off{opacity:0;pointer-events:none}
+  #title{font-size:64px;font-weight:900;font-style:italic;letter-spacing:8px;
+    background:linear-gradient(90deg,var(--cyan),var(--pink),var(--purple));
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+    filter:drop-shadow(0 0 22px rgba(255,45,149,.6))}
+  #subtitle{margin-top:10px;font-size:14px;letter-spacing:8px;color:#b9a6ff}
+  #controls{margin-top:44px;font-size:16px;line-height:2.2;text-align:left;color:#ddd}
+  #controls td{padding:0 14px}
+  .key{display:inline-block;min-width:30px;text-align:center;padding:2px 9px;border:1px solid var(--cyan);
+    border-radius:5px;color:var(--cyan);font-weight:700;font-size:14px;box-shadow:0 0 8px rgba(0,229,255,.35)}
+  #startmsg{margin-top:46px;font-size:17px;letter-spacing:4px;color:var(--pink);
+    animation:blink 1.2s infinite}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+  #errbox{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);display:none;
+    background:#1a0b22;border:1px solid var(--pink);padding:24px 32px;border-radius:8px;
+    font-size:15px;color:#ffd7ec;max-width:80vw;z-index:20}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="vignette"></div>
+<div id="speedglow"></div>
+<div id="scan"></div>
+<div id="flash"></div>
+
+<div id="hud">
+  <div id="lapbox">
+    <div id="laptime">0:00.00</div>
+    <div id="lapsub">LAP <span id="lapcount">1</span> &nbsp;|&nbsp; BEST <b id="bestlap">--:--.--</b></div>
+  </div>
+  <div id="driftpop"></div>
+  <div id="toast"></div>
+  <div id="scorebox">
+    <div id="score">0</div>
+    <div id="scorelabel">DRIFT SCORE</div>
+  </div>
+  <div id="speedbox">
+    <div id="speed">0</div>
+    <div id="speedunit">KM/H</div>
+    <div id="boostbar"><div id="boostfill"></div></div>
+    <div id="boostlabel">BOOST [SHIFT]</div>
+  </div>
+</div>
+
+<div id="overlay">
+  <div id="title">NEON MIDNIGHT</div>
+  <div id="subtitle">2 AM &middot; CITY EXPRESSWAY</div>
+  <table id="controls">
+    <tr><td><span class="key">W</span> / <span class="key">&#8593;</span></td><td>가속</td>
+        <td><span class="key">S</span> / <span class="key">&#8595;</span></td><td>브레이크 / 후진</td></tr>
+    <tr><td><span class="key">A</span> <span class="key">D</span> / <span class="key">&#8592;</span> <span class="key">&#8594;</span></td><td>조향</td>
+        <td><span class="key">SPACE</span></td><td>핸드브레이크 (드리프트)</td></tr>
+    <tr><td><span class="key">SHIFT</span></td><td>부스트 (게이지 충전 시)</td>
+        <td><span class="key">R</span></td><td>리스타트</td></tr>
+  </table>
+  <div id="startmsg">아무 키나 눌러 시동 걸기</div>
+</div>
+
+<div id="errbox"></div>
+
+<script src="vendor/three.min.js"></script>
+<script>
+  if (!window.THREE) {
+    document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.149.0/three.min.js"><\/script>');
+  }
+</script>
+<script src="track.js"></script>
+<script src="decor.js"></script>
+<script src="physics.js"></script>
+<script src="car.js"></script>
+<script src="effects.js"></script>
+<script src="audio.js"></script>
+<script src="hud.js"></script>
+<script src="main.js"></script>
+</body>
+</html>
